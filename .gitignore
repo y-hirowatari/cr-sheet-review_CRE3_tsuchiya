@@ -1,0 +1,8 @@
+# クライアント素材（CRシートPDF・提出画像）はコミットしない
+*.pdf
+*.pptx
+*.png
+*.jpg
+*.jpeg
+data/
+__pycache__/
