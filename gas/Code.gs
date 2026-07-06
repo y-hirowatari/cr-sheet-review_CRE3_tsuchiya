@@ -85,8 +85,10 @@ function postIdsOf(slide) {
 function classify(slide) {
   var text = norm(slideText(slide));
   if (/xxx|テンプレ/.test(text)) return { type: 'TEMPLATE' };
+  if (/投稿日一覧/.test(text)) return { type: 'LIST' };       // 「IG/X 投稿日一覧」ページ
+  if (/^(IG|X)$/.test(text)) return { type: 'LIST' };         // 媒体の区切りスライド
   var pid = postIdsOf(slide);
-  if (pid.ids.length >= 2) return { type: 'LIST' };          // 投稿日一覧
+  if (pid.ids.length >= 2) return { type: 'LIST' };          // 投稿日一覧（複数ID）
   if (pid.ids.length === 1) return { type: 'CONTENT', key: pid.ids[0], title: pid.title };
   return { type: 'CONT' };                                    // ID無し（画像のみ等）→ 直前に従属
 }
