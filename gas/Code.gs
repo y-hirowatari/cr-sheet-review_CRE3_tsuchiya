@@ -32,14 +32,6 @@ function onOpen() {
   SlidesApp.getUi()
     .createMenu('AIレビュー')
     .addItem('▶ レビューパネルを開く', 'showSidebar')
-    .addSeparator()
-    .addItem('選択したページを照合', 'reviewSelectedPages')
-    .addItem('ページ番号を指定して照合', 'reviewByNumbers')
-    .addItem('この投稿をまるごと照合', 'reviewActivePost')
-    .addItem('全投稿を照合', 'reviewAllPosts')
-    .addSeparator()
-    .addItem('構造を診断', 'diagnose')
-    .addItem('結果コメントを消す', 'clearFindings')
     .addToUi();
 }
 
