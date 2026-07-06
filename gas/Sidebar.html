@@ -5,7 +5,7 @@
 <style>
   :root{
     --ink:#241c22; --ink2:#6c5c64; --line:#ecdde4; --bg:#fbf7f8; --card:#fff;
-    --rose:#c63d6e; --blue:#2e86ab;
+    --rose:#c63d6e;
     --good:#2e7d5b; --goodbg:#e5f1eb;
     --warn:#8a5d10; --warnbg:#f6ecd6;
     --crit:#b23a34; --critbg:#f7e0dd;
@@ -14,36 +14,32 @@
   body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
     color:var(--ink);background:var(--bg);font-size:13px;line-height:1.6}
   .pad{padding:12px 12px 24px}
-  h1{font-size:13px;margin:0 0 2px;font-weight:800;letter-spacing:.02em}
-  .sub{font-size:11px;color:var(--ink2);margin:0 0 12px}
+  h1{font-size:13px;margin:0 0 10px;font-weight:800;letter-spacing:.02em}
 
-  .btns{display:flex;flex-direction:column;gap:7px}
-  button{font-family:inherit;font-size:12.5px;font-weight:700;border-radius:8px;border:1px solid var(--line);
-    background:var(--card);color:var(--ink);padding:9px 10px;cursor:pointer;transition:.12s}
-  button:hover{border-color:var(--rose);color:var(--rose)}
-  button:disabled{opacity:.5;cursor:default;border-color:var(--line);color:var(--ink2)}
-  button.primary{background:var(--rose);border-color:var(--rose);color:#fff}
-  button.primary:hover{filter:brightness(1.06);color:#fff}
-  .row{display:flex;gap:6px}
-  .row input{flex:1;min-width:0;font-family:inherit;font-size:12.5px;border:1px solid var(--line);
-    border-radius:8px;padding:8px 9px;background:var(--card);color:var(--ink)}
-  .row button{flex:none;white-space:nowrap}
-  .mini{display:flex;gap:14px;margin-top:2px}
-  .mini a{font-size:11.5px;color:var(--ink2);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
-  .mini a:hover{color:var(--rose)}
+  /* コンパクトな操作部 */
+  .bar{display:flex;flex-direction:column;gap:7px}
+  select,input,button{font-family:inherit;font-size:12.5px;border-radius:8px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);padding:8px 9px}
+  select{width:100%;font-weight:700;cursor:pointer;appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--ink2) 50%),linear-gradient(135deg,var(--ink2) 50%,transparent 50%);
+    background-position:calc(100% - 15px) 15px,calc(100% - 10px) 15px;background-size:5px 5px;background-repeat:no-repeat}
+  input{width:100%}
+  button.go{font-weight:800;background:var(--rose);border-color:var(--rose);color:#fff;cursor:pointer;padding:10px}
+  button.go:hover{filter:brightness(1.06)}
+  button.go:disabled{opacity:.55;cursor:default}
 
-  .selinfo{font-size:11px;color:var(--ink2);background:#fff;border:1px dashed var(--line);
-    border-radius:8px;padding:7px 9px;margin:10px 0}
-  .selinfo b{color:var(--ink)}
+  .foot{display:flex;gap:14px;margin-top:9px;font-size:11px;color:var(--ink2)}
+  .foot a{color:var(--ink2);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+  .foot a:hover{color:var(--rose)}
 
-  .status{font-size:11.5px;color:var(--ink2);margin:12px 0 6px;min-height:16px}
+  .status{font-size:11.5px;color:var(--ink2);margin:11px 0 6px;min-height:16px}
   .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--line);border-top-color:var(--rose);
     border-radius:50%;animation:s .7s linear infinite;vertical-align:-1px;margin-right:6px}
   @keyframes s{to{transform:rotate(360deg)}}
 
   .card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:11px 12px;margin-bottom:9px}
   .chead{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-  .badge{font-size:10.5px;font-weight:800;letter-spacing:.02em;padding:2px 8px;border-radius:999px;flex:none}
+  .badge{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;flex:none}
   .badge.ng{background:var(--critbg);color:var(--crit)}
   .badge.ok{background:var(--goodbg);color:var(--good)}
   .badge.info{background:#eee;color:#555}
@@ -54,101 +50,98 @@
   .glabel{font-size:11px;font-weight:700;margin-bottom:4px}
   .glabel.crit{color:var(--crit)} .glabel.warn{color:var(--warn)} .glabel.good{color:var(--good)}
   .chips{display:flex;flex-wrap:wrap;gap:5px}
-  .chip{font-family:"SF Mono","DejaVu Sans Mono",monospace;font-size:11px;font-weight:600;
-    padding:3px 7px;border-radius:6px;border:1px solid var(--line);background:#faf6f8}
+  .chip{font-family:"DejaVu Sans Mono",monospace;font-size:11px;font-weight:600;padding:3px 7px;border-radius:6px;border:1px solid var(--line);background:#faf6f8}
   .chip.crit{background:var(--critbg);color:var(--crit);border-color:transparent}
   .chip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
   .chip.good{background:var(--goodbg);color:var(--good);border-color:transparent}
   .note{font-size:11px;color:var(--warn);background:var(--warnbg);border-radius:7px;padding:6px 8px;margin-top:6px}
-  .empty{font-size:11.5px;color:var(--ink2);text-align:center;padding:18px 8px}
-  .legend{font-size:10.5px;color:var(--ink2);margin-top:10px;line-height:1.7}
-  .legend b.c{color:var(--crit)} .legend b.w{color:var(--warn)} .legend b.g{color:var(--good)}
+  .empty{font-size:11.5px;color:var(--ink2);text-align:center;padding:16px 8px}
+  .hint{font-size:10.5px;color:var(--ink2);margin-top:3px}
 </style>
 </head>
 <body>
 <div class="pad">
-  <h1>AIレビュー</h1>
-  <p class="sub">色番号の照合（指示テキスト ↔ 提出画像OCR）</p>
+  <h1>AIレビュー <span style="font-weight:400;color:var(--ink2);font-size:11px">色番号照合</span></h1>
 
-  <div class="btns">
-    <button class="primary" id="bSel" onclick="run('selected')">選択したページを照合</button>
-    <div class="row">
-      <input id="spec" type="text" placeholder="例: 7 / 5,7 / 9-11" />
-      <button id="bNum" onclick="run('numbers')">番号で照合</button>
-    </div>
-    <button id="bPost" onclick="run('post')">この投稿をまるごと照合</button>
-    <button id="bAll" onclick="run('all')">全投稿を照合（時間がかかります）</button>
-    <div class="mini">
-      <a onclick="run('diagnose')">構造を診断</a>
-      <a onclick="run('clear')">結果コメントを消す</a>
-      <a onclick="loadSel()">選択を更新</a>
-    </div>
+  <div class="bar">
+    <select id="scope" onchange="onScope()">
+      <option value="selected">選択したページ</option>
+      <option value="numbers">ページ番号を指定</option>
+      <option value="post">この投稿ぜんぶ</option>
+      <option value="all">全投稿（時間がかかる）</option>
+    </select>
+    <input id="spec" type="text" placeholder="例: 7 / 5,7 / 9-11" style="display:none" />
+    <button class="go" id="go" onclick="go()">▶ 照合する</button>
+    <div class="hint" id="hint"></div>
   </div>
 
-  <div class="selinfo" id="selinfo">選択中のページ: 読み込み中…</div>
+  <div class="foot">
+    <a onclick="act('diagnose')">構造を診断</a>
+    <a onclick="act('clear')">結果を消す</a>
+  </div>
+
   <div class="status" id="status"></div>
   <div id="results"></div>
-
-  <div class="legend">
-    <b class="c">❌ 取り違え疑い</b>：提出物にあるが正解に無い色番号<br>
-    <b class="w">⚠ 未検出</b>：正解にあるが提出物で読めず／未反映<br>
-    <b class="g">✅ 一致</b>：正解と提出物で一致
-  </div>
 </div>
 
 <script>
   function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
-  function setBusy(b,msg){
-    ['bSel','bNum','bPost','bAll'].forEach(function(id){document.getElementById(id).disabled=b;});
-    document.getElementById('status').innerHTML = b ? ('<span class="spin"></span>'+esc(msg||'照合中…（OCRに数十秒かかることがあります）')) : esc(msg||'');
+  function busy(b,msg){
+    document.getElementById('go').disabled=b;
+    document.getElementById('status').innerHTML=b?('<span class="spin"></span>'+esc(msg||'照合中…（OCRに数十秒かかることがあります）')):esc(msg||'');
   }
-  function chips(arr,cls){
-    if(!arr||!arr.length) return '';
-    return '<div class="chips">'+arr.map(function(c){return '<span class="chip '+cls+'">'+esc(c)+'</span>';}).join('')+'</div>';
-  }
+  function chips(a,cls){if(!a||!a.length)return '';return '<div class="chips">'+a.map(function(c){return '<span class="chip '+cls+'">'+esc(c)+'</span>';}).join('')+'</div>';}
   function card(r){
-    if(r.skipped) return '<div class="card"><div class="chead"><span class="badge info">対象外</span>'+
-      '<div class="ctitle">ページ p'+r.pageIndex+'<small>一覧／テンプレ／投稿IDなし</small></div></div></div>';
-    var badge = r.truthEmpty ? '<span class="badge info">情報</span>'
-      : (r.hasIssue ? '<span class="badge ng">要確認</span>' : '<span class="badge ok">一致</span>');
-    var head = (r.scope==='page'?('ページ p'+r.pageIndex):'投稿 '+esc(r.key));
-    var html = '<div class="card"><div class="chead">'+badge+
-      '<div class="ctitle">'+esc(head)+'<small>'+esc(r.key)+(r.title?' 【'+esc(r.title)+'】':'')+'</small></div></div>';
-    html += '<div class="count">一致 '+r.matched.length+' / 正解 '+r.truth.length+'（OCR検出 '+r.ocr.length+'）</div>';
-    if(r.truthEmpty) html += '<div class="note">正解の色番号をテキストから取得できませんでした。指示テキストのあるページか確認してください。</div>';
-    if(r.unknown.length) html += '<div class="grp"><div class="glabel crit">❌ 取り違え疑い</div>'+chips(r.unknown,'crit')+'</div>';
-    if(r.missing.length) html += '<div class="grp"><div class="glabel warn">⚠ 未検出</div>'+chips(r.missing,'warn')+'</div>';
-    if(r.matched.length) html += '<div class="grp"><div class="glabel good">✅ 一致</div>'+chips(r.matched,'good')+'</div>';
-    return html+'</div>';
+    if(r.skipped)return '<div class="card"><div class="chead"><span class="badge info">対象外</span><div class="ctitle">ページ p'+r.pageIndex+'<small>一覧／テンプレ／IDなし</small></div></div></div>';
+    var badge=r.truthEmpty?'<span class="badge info">情報</span>':(r.hasIssue?'<span class="badge ng">要確認</span>':'<span class="badge ok">一致</span>');
+    var head=(r.scope==='page'?('ページ p'+r.pageIndex):'投稿 '+esc(r.key));
+    var h='<div class="card"><div class="chead">'+badge+'<div class="ctitle">'+esc(head)+'<small>'+esc(r.key)+(r.title?' 【'+esc(r.title)+'】':'')+'</small></div></div>';
+    h+='<div class="count">一致 '+r.matched.length+' / 正解 '+r.truth.length+'（OCR検出 '+r.ocr.length+'）</div>';
+    if(r.truthEmpty)h+='<div class="note">正解の色番号を取得できませんでした。指示テキストのあるページか確認してください。</div>';
+    if(r.unknown.length)h+='<div class="grp"><div class="glabel crit">❌ 取り違え疑い</div>'+chips(r.unknown,'crit')+'</div>';
+    if(r.missing.length)h+='<div class="grp"><div class="glabel warn">⚠ 未検出</div>'+chips(r.missing,'warn')+'</div>';
+    if(r.matched.length)h+='<div class="grp"><div class="glabel good">✅ 一致</div>'+chips(r.matched,'good')+'</div>';
+    return h+'</div>';
   }
   function render(results){
-    setBusy(false,'照合完了：'+results.length+'件');
-    var el = document.getElementById('results');
-    if(!results.length){ el.innerHTML='<div class="empty">対象ページがありません。</div>'; return; }
-    el.innerHTML = results.map(card).join('');
+    busy(false,'完了：'+results.length+'件');
+    var el=document.getElementById('results');
+    el.innerHTML=results.length?results.map(card).join(''):'<div class="empty">対象ページがありません。</div>';
   }
-  function fail(e){ setBusy(false,''); document.getElementById('results').innerHTML='<div class="note">エラー: '+esc(e&&e.message||e)+'</div>'; }
+  function fail(e){busy(false,'');document.getElementById('results').innerHTML='<div class="note">エラー: '+esc(e&&e.message||e)+'</div>';}
 
-  function run(kind){
+  function onScope(){
+    var s=document.getElementById('scope').value;
+    document.getElementById('spec').style.display=(s==='numbers')?'block':'none';
+    hint();
+  }
+  function hint(){
+    var s=document.getElementById('scope').value;
+    var el=document.getElementById('hint');
+    if(s==='selected'){el.textContent='読み込み中…';
+      google.script.run.withSuccessHandler(function(info){
+        el.textContent=(!info||!info.length)?'左のサムネイルでページを選んでください':
+          ('選択中: '+info.map(function(x){return 'p'+x.page+(x.images?'('+x.images+'枚)':'');}).join(' , '));
+      }).withFailureHandler(function(){el.textContent='';}).api_selectionInfo();
+    } else if(s==='numbers'){el.textContent='カンマ・範囲が使えます（例 5,7 / 9-11）';}
+    else if(s==='post'){el.textContent='いま開いているページが属する投稿の全ページ';}
+    else {el.textContent='貼り付け画像のある全投稿（枚数が多いと数分かかることも）';}
+  }
+  function go(){
     document.getElementById('results').innerHTML='';
-    if(kind==='clear'){ setBusy(true,'削除中…'); google.script.run.withSuccessHandler(function(n){setBusy(false,n+'件のコメントを削除しました');}).withFailureHandler(fail).api_clear(); return; }
-    if(kind==='diagnose'){ setBusy(true,'診断中…'); google.script.run.withSuccessHandler(function(url){setBusy(false,'');document.getElementById('results').innerHTML='<div class="card">構造診断を出力しました。<br><a href="'+url+'" target="_blank">診断ドキュメントを開く</a></div>';}).withFailureHandler(fail).api_diagnoseUrl(); return; }
-    setBusy(true);
-    var run = google.script.run.withSuccessHandler(render).withFailureHandler(fail);
-    if(kind==='selected') run.api_reviewSelected();
-    else if(kind==='numbers') run.api_reviewByNumbers(document.getElementById('spec').value||'');
-    else if(kind==='post') run.api_reviewActivePost();
-    else if(kind==='all') run.api_reviewAll();
+    var s=document.getElementById('scope').value; busy(true);
+    var g=google.script.run.withSuccessHandler(render).withFailureHandler(fail);
+    if(s==='selected')g.api_reviewSelected();
+    else if(s==='numbers')g.api_reviewByNumbers(document.getElementById('spec').value||'');
+    else if(s==='post')g.api_reviewActivePost();
+    else g.api_reviewAll();
   }
-
-  function loadSel(){
-    google.script.run.withSuccessHandler(function(info){
-      var el=document.getElementById('selinfo');
-      if(!info||!info.length){ el.innerHTML='選択中のページ: <b>なし</b>（サムネイルでページを選ぶか、番号で指定）'; return; }
-      el.innerHTML='選択中: '+info.map(function(s){return '<b>p'+s.page+'</b>'+(s.images?'('+s.images+'枚)':'');}).join(' , ');
-    }).withFailureHandler(function(){}).api_selectionInfo();
+  function act(kind){
+    document.getElementById('results').innerHTML='';
+    if(kind==='clear'){busy(true,'削除中…');google.script.run.withSuccessHandler(function(n){busy(false,n+'件の結果コメントを削除しました');}).withFailureHandler(fail).api_clear();}
+    else if(kind==='diagnose'){busy(true,'診断中…');google.script.run.withSuccessHandler(function(url){busy(false,'');document.getElementById('results').innerHTML='<div class="card">構造診断を出力しました。<br><a href="'+url+'" target="_blank">診断ドキュメントを開く</a></div>';}).withFailureHandler(fail).api_diagnoseUrl();}
   }
-  loadSel();
+  hint();
 </script>
 </body>
 </html>
