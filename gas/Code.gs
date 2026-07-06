@@ -1,53 +1,52 @@
 /**
  * ネイルホリック CRシート AIレビュー — Google Slides ワンクリック照合（プロトタイプ）
  *
- * 前提（元ブリーフより）：CRシート(Googleスライド)の中に
- *   ・「文字入れ指示内容」テキスト  … 正解（＝文字データなので正確に取れる）
- *   ・「貼り付けページ」の提出クリエイティブ … 画像（OCRで文字を読む）
- * が同居している。本スクリプトはスライド上でワンクリック照合し、
- * 結果を「コメント」（テキストボックス）とスピーカーノートに書き出す。
+ * 前提（実物の7月CRシートで確認した構造）：
+ *   ・1つの投稿は「IG_fe＿投稿no,N_◯月◯日(◯) 17:00 【タイトル】」で識別される
+ *   ・1投稿につき複数スライド（指示ページ／貼り付けページ／FIX）が並ぶ
+ *   ・貼り付けページには提出クリエイティブ画像が貼られている（＝OCR対象）
+ *   ・投稿日一覧ページ（複数の投稿IDが並ぶ）やテンプレページは照合対象外
  *
- * 設計方針：AIに正誤を判断させない。OCRは「文字を読む」だけ。
- *           一致判定は機械が文字単位で照合する（照合であって判断ではない）。
+ * 本スクリプトは、同じ投稿IDのスライド群をまとめて
+ *   正解＝スライド上のテキストの色番号（文字データなので正確）
+ *   提出物＝貼り付け画像を Drive OCR で読取
+ * を機械照合し、結果をスライド上のコメント（テキストボックス）とノートに書き出す。
+ *
+ * 設計方針：AIに正誤を判断させない。OCRは「読む」だけ、一致判定は機械が文字単位で行う。
+ *
+ * ★まず「AIレビュー → 構造を診断」を実行し、出力されたGoogleドキュメントのURLを共有してください。
+ *   実際のスライド構造に合わせて、正解テキストと貼り付け画像の対応づけを最終調整します。
  *
  * セットアップは gas/README.md を参照（Drive 詳細サービスの有効化が必要）。
  */
 
 var CONFIG = {
-  // 色番号の書式： 英大文字2 + 数字3 + 任意の英大文字1  例) BL920, WT045R, PU076D
-  codePattern: /[A-Z]{2}\d{3}[A-Z]?/g,
-
-  ocrLanguage: 'ja',          // Drive OCR の言語
-  writeComment: true,         // スライド上にテキストボックスで結果を出す
-  writeSpeakerNotes: true,    // スピーカーノートに詳細を出す
-
-  // 正解テキストの探し方：
-  //  'activeThenPrev' … アクティブスライドのテキストを正解にする。
-  //                      テキストが無ければ直前スライド（指示ページ）を使う。
-  truthSource: 'activeThenPrev',
-
+  codePattern: /[A-Z]{2}\d{3}[A-Z]?/g,   // 色番号 例) BL920, WT045R, PU076D
+  ocrLanguage: 'ja',
+  writeComment: true,
+  writeSpeakerNotes: true,
   commentTitle: '🔎 AI一次チェック（照合結果）'
 };
 
-/** メニュー登録（ファイルを開くと「AIレビュー」メニューが出る） */
 function onOpen() {
   SlidesApp.getUi()
     .createMenu('AIレビュー')
-    .addItem('このスライドを照合', 'reviewActiveSlide')
-    .addItem('全スライドを照合', 'reviewAllSlides')
+    .addItem('このスライド（の投稿）を照合', 'reviewActivePost')
+    .addItem('全投稿を照合', 'reviewAllPosts')
     .addSeparator()
-    .addItem('直近の結果コメントを消す', 'clearFindings')
+    .addItem('構造を診断（最初にこれ）', 'diagnose')
+    .addItem('結果コメントを消す', 'clearFindings')
     .addToUi();
 }
 
-/** 文字列正規化：全角半角・空白のゆれのみ吸収（色番号の1文字差は保持） */
+/* ---------- テキスト・色番号ユーティリティ ---------- */
+
 function norm(s) {
   if (!s) return '';
   s = s.normalize('NFKC').replace(/　/g, ' ');
   return s.replace(/[ \t]+/g, ' ').trim();
 }
 
-/** テキストから色番号の集合（重複なし・出現順）を取り出す */
 function extractCodes(text) {
   var m = norm(text).match(CONFIG.codePattern) || [];
   var seen = {}, out = [];
@@ -55,100 +54,101 @@ function extractCodes(text) {
   return out;
 }
 
-/** スライド上の全テキスト（シェイプ内テキスト）を連結して返す */
 function slideText(slide) {
   var parts = [];
   slide.getShapes().forEach(function (sh) {
-    try {
-      var t = sh.getText().asString();
-      if (t) parts.push(t);
-    } catch (e) { /* テキストを持たないシェイプは無視 */ }
+    try { var t = sh.getText().asString(); if (t) parts.push(t); } catch (e) {}
   });
-  // 表の中のテキストも拾う
   slide.getTables().forEach(function (tbl) {
-    for (var r = 0; r < tbl.getNumRows(); r++) {
-      for (var c = 0; c < tbl.getNumColumns(); c++) {
+    for (var r = 0; r < tbl.getNumRows(); r++)
+      for (var c = 0; c < tbl.getNumColumns(); c++)
         try { parts.push(tbl.getCell(r, c).getText().asString()); } catch (e) {}
-      }
-    }
   });
   return parts.join('\n');
 }
 
-/** 画像 Blob を Drive の OCR に通して文字列を得る（Drive 詳細サービスを使用） */
+/** スライド上の投稿IDを抽出。返り値 {ids:[key...], title} */
+function postIdsOf(slide) {
+  var text = norm(slideText(slide));
+  var re = /投稿no,\s*(\d+)_\s*(\d+)月\s*(\d+)日/g, m, ids = [], seen = {};
+  while ((m = re.exec(text)) !== null) {
+    var key = m[1] + '_' + m[2] + '/' + m[3];
+    if (!seen[key]) { seen[key] = 1; ids.push(key); }
+  }
+  var t = text.match(/【([^】]+)】/);
+  return { ids: ids, title: t ? t[1] : '' };
+}
+
+/** スライドの種別を判定：TEMPLATE / LIST / CONTENT / CONT(継続) */
+function classify(slide) {
+  var text = norm(slideText(slide));
+  if (/xxx|テンプレ/.test(text)) return { type: 'TEMPLATE' };
+  var pid = postIdsOf(slide);
+  if (pid.ids.length >= 2) return { type: 'LIST' };          // 投稿日一覧
+  if (pid.ids.length === 1) return { type: 'CONTENT', key: pid.ids[0], title: pid.title };
+  return { type: 'CONT' };                                    // ID無し（画像のみ等）→ 直前に従属
+}
+
+/** 全スライドに投稿キーを割り当てる（CONTは直前のキーを継承） */
+function keyedSlides() {
+  var slides = SlidesApp.getActivePresentation().getSlides();
+  var out = [], lastKey = null, lastTitle = '';
+  for (var i = 0; i < slides.length; i++) {
+    var cl = classify(slides[i]);
+    var key = null, title = '';
+    if (cl.type === 'CONTENT') { key = cl.key; title = cl.title; lastKey = key; lastTitle = title; }
+    else if (cl.type === 'CONT') { key = lastKey; title = lastTitle; }
+    // TEMPLATE / LIST は key=null（対象外）
+    out.push({ index: i, slide: slides[i], type: cl.type, key: key, title: title });
+  }
+  return out;
+}
+
+/* ---------- OCR（Drive 詳細サービス） ---------- */
+
 function ocrBlob(blob) {
   var tmp = Drive.Files.insert(
     { title: '__ocr_tmp__', mimeType: 'application/vnd.google-apps.document' },
-    blob,
-    { ocr: true, ocrLanguage: CONFIG.ocrLanguage }
-  );
+    blob, { ocr: true, ocrLanguage: CONFIG.ocrLanguage });
   var text = '';
-  try {
-    text = DocumentApp.openById(tmp.id).getBody().getText();
-  } finally {
-    try { Drive.Files.remove(tmp.id); } catch (e) {}
-  }
+  try { text = DocumentApp.openById(tmp.id).getBody().getText(); }
+  finally { try { Drive.Files.remove(tmp.id); } catch (e) {} }
   return text;
 }
 
-/** スライド上の全画像をOCRし、読めた色番号(確信の代わりに重複回数)を集計 */
-function ocrCodesOnSlide(slide) {
-  var images = slide.getImages();
-  var count = {};
+function ocrImagesOf(slide, counter) {
   var token = ScriptApp.getOAuthToken();
-  images.forEach(function (img) {
+  slide.getImages().forEach(function (img) {
     var blob;
     try {
       var url = img.getContentUrl();
       blob = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + token } }).getBlob();
     } catch (e) { return; }
-    var text = ocrBlob(blob);
-    extractCodes(text).forEach(function (c) { count[c] = (count[c] || 0) + 1; });
+    extractCodes(ocrBlob(blob)).forEach(function (c) { counter[c] = (counter[c] || 0) + 1; });
   });
-  return count; // {code: 検出画像数}
 }
 
-/** アクティブスライド（未選択時は先頭）を返す */
-function getActiveSlide() {
-  var pres = SlidesApp.getActivePresentation();
-  var sel = pres.getSelection();
-  var page = sel && sel.getCurrentPage();
-  if (page && page.getPageType && page.getPageType() === SlidesApp.PageType.SLIDE) {
-    return page.asSlide();
-  }
-  var slides = pres.getSlides();
-  return slides.length ? slides[0] : null;
-}
+/* ---------- 照合 ---------- */
 
-/** 正解の色番号集合を求める（CONFIG.truthSource に従う） */
-function getTruthCodes(slide, index, slides) {
-  var codes = extractCodes(slideText(slide));
-  if (codes.length === 0 && CONFIG.truthSource === 'activeThenPrev' && index > 0) {
-    codes = extractCodes(slideText(slides[index - 1])); // 直前の「指示ページ」を正解に
-  }
-  return codes;
-}
-
-/** 1スライドを照合してレポート文字列と判定を返す */
-function reviewSlide(slide, index, slides) {
-  var truth = getTruthCodes(slide, index, slides);
-  var ocr = ocrCodesOnSlide(slide);                 // {code: count}
+/** 投稿キー単位で照合。group = keyedSlides の同一キー配列 */
+function reviewGroup(group) {
+  var truth = [], seen = {}, ocr = {};
+  group.forEach(function (g) {
+    extractCodes(slideText(g.slide)).forEach(function (c) { if (!seen[c]) { seen[c] = 1; truth.push(c); } });
+    ocrImagesOf(g.slide, ocr);
+  });
   var ocrCodes = Object.keys(ocr);
-
   var truthSet = {}; truth.forEach(function (c) { truthSet[c] = 1; });
   var ocrSet = {}; ocrCodes.forEach(function (c) { ocrSet[c] = 1; });
 
   var matched = truth.filter(function (c) { return ocrSet[c]; });
-  var missing = truth.filter(function (c) { return !ocrSet[c]; });     // 正解にあるがOCR未検出
-  var unknown = ocrCodes.filter(function (c) { return !truthSet[c]; }); // OCRにあるが正解に無い＝取り違え疑い
+  var missing = truth.filter(function (c) { return !ocrSet[c]; });
+  var unknown = ocrCodes.filter(function (c) { return !truthSet[c]; });
+  var ok = truth.length > 0 && !missing.length && !unknown.length;
 
-  var ok = (truth.length > 0) && missing.length === 0 && unknown.length === 0;
-
-  var lines = [];
-  lines.push(CONFIG.commentTitle);
-  if (truth.length === 0) {
-    lines.push('※ このスライドから正解の色番号を取得できませんでした（指示テキストが見つからない）。');
-  }
+  var lines = [CONFIG.commentTitle];
+  lines.push('投稿: ' + (group[0].key || '?') + ' 【' + (group[0].title || '') + '】');
+  if (!truth.length) lines.push('※ 正解の色番号をテキストから取得できませんでした（指示テキストが見当たらない）');
   lines.push('正解(指示): ' + (truth.join(', ') || '（なし）'));
   lines.push('OCR(提出物): ' + (ocrCodes.join(', ') || '（なし）'));
   lines.push('一致: ' + matched.length + '/' + truth.length);
@@ -159,57 +159,101 @@ function reviewSlide(slide, index, slides) {
   return { ok: ok, hasIssue: unknown.length > 0 || missing.length > 0, text: lines.join('\n') };
 }
 
-/** 結果をスライドへ書き出す（テキストボックス＋スピーカーノート） */
 function writeFindings(slide, result) {
   if (CONFIG.writeSpeakerNotes) {
     try { slide.getNotesPage().getSpeakerNotesShape().getText().setText(result.text); } catch (e) {}
   }
   if (CONFIG.writeComment) {
     clearFindingsOnSlide(slide);
-    var box = slide.insertTextBox(result.text, 12, 12, 320, 120);
-    box.setTitle('__ai_review__'); // 後で消せるように印を付ける
-    var tr = box.getText();
-    tr.getTextStyle().setFontSize(9).setForegroundColor(result.hasIssue ? '#C0392B' : '#1E8449');
+    var box = slide.insertTextBox(result.text, 12, 12, 340, 130);
+    box.setTitle('__ai_review__');
+    box.getText().getTextStyle().setFontSize(9)
+      .setForegroundColor(result.hasIssue ? '#C0392B' : '#1E8449');
   }
 }
 
-/** 印付きの結果テキストボックスを1スライドから消す */
 function clearFindingsOnSlide(slide) {
   slide.getShapes().forEach(function (sh) {
     try { if (sh.getTitle() === '__ai_review__') sh.remove(); } catch (e) {}
   });
 }
 
-/** メニュー：アクティブスライドを照合 */
-function reviewActiveSlide() {
+/* ---------- メニュー実行 ---------- */
+
+function activeSlideIndex() {
   var pres = SlidesApp.getActivePresentation();
+  var sel = pres.getSelection();
+  var page = sel && sel.getCurrentPage();
   var slides = pres.getSlides();
-  var slide = getActiveSlide();
-  if (!slide) { SlidesApp.getUi().alert('スライドが見つかりません'); return; }
-  var index = 0;
-  for (var i = 0; i < slides.length; i++) { if (slides[i].getObjectId() === slide.getObjectId()) { index = i; break; } }
-  var result = reviewSlide(slide, index, slides);
-  writeFindings(slide, result);
+  if (page) for (var i = 0; i < slides.length; i++)
+    if (slides[i].getObjectId() === page.getObjectId()) return i;
+  return 0;
+}
+
+function reviewActivePost() {
+  var ks = keyedSlides();
+  var idx = activeSlideIndex();
+  var key = ks[idx].key;
+  if (!key) { SlidesApp.getUi().alert('このスライドは照合対象外です（一覧/テンプレ、または投稿IDなし）。'); return; }
+  var group = ks.filter(function (g) { return g.key === key; });
+  var result = reviewGroup(group);
+  group.forEach(function (g) { if (g.slide.getImages().length) writeFindings(g.slide, result); });
+  writeFindings(ks[idx].slide, result); // アクティブスライドには必ず出す
   SlidesApp.getUi().alert(result.text);
 }
 
-/** メニュー：全スライドを照合 */
-function reviewAllSlides() {
-  var pres = SlidesApp.getActivePresentation();
-  var slides = pres.getSlides();
-  var issues = 0, reviewed = 0;
-  for (var i = 0; i < slides.length; i++) {
-    if (slides[i].getImages().length === 0) continue; // 画像の無いページ（目次・指示のみ）はスキップ
-    var result = reviewSlide(slides[i], i, slides);
-    writeFindings(slides[i], result);
-    reviewed++;
-    if (result.hasIssue) issues++;
-  }
-  SlidesApp.getUi().alert('照合完了：' + reviewed + 'ページ中 ' + issues + 'ページで要確認');
+function reviewAllPosts() {
+  var ks = keyedSlides();
+  var groups = {};
+  ks.forEach(function (g) { if (g.key) (groups[g.key] = groups[g.key] || []).push(g); });
+  var reviewed = 0, issues = 0;
+  Object.keys(groups).forEach(function (key) {
+    var group = groups[key];
+    var hasImg = group.some(function (g) { return g.slide.getImages().length; });
+    if (!hasImg) return;                     // 貼り付け画像が無い投稿はスキップ
+    var result = reviewGroup(group);
+    group.forEach(function (g) { if (g.slide.getImages().length) writeFindings(g.slide, result); });
+    reviewed++; if (result.hasIssue) issues++;
+  });
+  SlidesApp.getUi().alert('照合完了：' + reviewed + '投稿中 ' + issues + '投稿で要確認');
 }
 
-/** メニュー：全スライドの結果コメントを消す */
 function clearFindings() {
   SlidesApp.getActivePresentation().getSlides().forEach(clearFindingsOnSlide);
   SlidesApp.getUi().alert('結果コメントを削除しました');
+}
+
+/* ---------- 構造診断（最初に実行） ---------- */
+
+function diagnose() {
+  var ks = keyedSlides();
+  var doc = DocumentApp.create('AIレビュー_構造診断_' + new Date().toISOString().slice(0, 16));
+  var body = doc.getBody();
+  body.appendParagraph('ネイルホリック CRシート 構造診断').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('スライド数: ' + ks.length);
+  body.appendParagraph('凡例: type=種別 / key=投稿ID / T=テキストshape数 / IMG=画像数 / codes=テキストから読めた色番号');
+  body.appendParagraph('');
+
+  var counts = { CONTENT: 0, CONT: 0, LIST: 0, TEMPLATE: 0 };
+  ks.forEach(function (g) {
+    counts[g.type] = (counts[g.type] || 0) + 1;
+    var slide = g.slide;
+    var nText = slide.getShapes().filter(function (sh) { try { return !!sh.getText().asString().trim(); } catch (e) { return false; } }).length;
+    var nImg = slide.getImages().length;
+    var codes = extractCodes(slideText(slide));
+    var first = norm(slideText(slide)).split('\n')[0] || '';
+    body.appendParagraph(
+      'p' + (g.index + 1) + ' [' + g.type + ']' +
+      ' key=' + (g.key || '-') +
+      ' T=' + nText + ' IMG=' + nImg +
+      ' codes=' + (codes.join(',') || '-') +
+      '  | ' + first.slice(0, 40)
+    );
+  });
+
+  body.appendParagraph('');
+  body.appendParagraph('種別集計: CONTENT=' + counts.CONTENT + ' CONT=' + counts.CONT +
+    ' LIST=' + counts.LIST + ' TEMPLATE=' + counts.TEMPLATE);
+  doc.saveAndClose();
+  SlidesApp.getUi().alert('診断を出力しました。このドキュメントのURLを共有してください:\n' + doc.getUrl());
 }
