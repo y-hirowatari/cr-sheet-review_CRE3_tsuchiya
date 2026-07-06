@@ -31,7 +31,9 @@ var CONFIG = {
 function onOpen() {
   SlidesApp.getUi()
     .createMenu('AIレビュー')
-    .addItem('このスライド（の投稿）を照合', 'reviewActivePost')
+    .addItem('選択したページを照合', 'reviewSelectedPages')
+    .addItem('ページ番号を指定して照合', 'reviewByNumbers')
+    .addItem('この投稿をまるごと照合', 'reviewActivePost')
     .addItem('全投稿を照合', 'reviewAllPosts')
     .addSeparator()
     .addItem('構造を診断（最初にこれ）', 'diagnose')
@@ -130,14 +132,24 @@ function ocrImagesOf(slide, counter) {
 
 /* ---------- 照合 ---------- */
 
-/** 投稿キー単位で照合。group = keyedSlides の同一キー配列 */
-function reviewGroup(group) {
-  var truth = [], seen = {}, ocr = {};
+/** 投稿グループ全体の正解色番号（テキストから）を返す */
+function truthOfGroup(group) {
+  var truth = [], seen = {};
   group.forEach(function (g) {
     extractCodes(slideText(g.slide)).forEach(function (c) { if (!seen[c]) { seen[c] = 1; truth.push(c); } });
-    ocrImagesOf(g.slide, ocr);
   });
-  var ocrCodes = Object.keys(ocr);
+  return truth;
+}
+
+/** 指定スライド配列の画像をOCRし、色番号→検出回数を返す */
+function ocrOfSlides(slides) {
+  var counter = {};
+  slides.forEach(function (s) { ocrImagesOf(s, counter); });
+  return counter;
+}
+
+/** 正解とOCR結果から照合レポートを組み立てる */
+function buildResult(truth, ocrCodes, headerLabel) {
   var truthSet = {}; truth.forEach(function (c) { truthSet[c] = 1; });
   var ocrSet = {}; ocrCodes.forEach(function (c) { ocrSet[c] = 1; });
 
@@ -146,17 +158,32 @@ function reviewGroup(group) {
   var unknown = ocrCodes.filter(function (c) { return !truthSet[c]; });
   var ok = truth.length > 0 && !missing.length && !unknown.length;
 
-  var lines = [CONFIG.commentTitle];
-  lines.push('投稿: ' + (group[0].key || '?') + ' 【' + (group[0].title || '') + '】');
+  var lines = [CONFIG.commentTitle, headerLabel];
   if (!truth.length) lines.push('※ 正解の色番号をテキストから取得できませんでした（指示テキストが見当たらない）');
   lines.push('正解(指示): ' + (truth.join(', ') || '（なし）'));
-  lines.push('OCR(提出物): ' + (ocrCodes.join(', ') || '（なし）'));
+  lines.push('OCR(このページ): ' + (ocrCodes.join(', ') || '（なし）'));
   lines.push('一致: ' + matched.length + '/' + truth.length);
   if (unknown.length) lines.push('❌ 取り違え疑い（正解に無い）: ' + unknown.join(', '));
   if (missing.length) lines.push('⚠ 未検出（正解にあるが読めず/未反映）: ' + missing.join(', '));
   if (ok) lines.push('✅ 色番号は正解と一致');
 
   return { ok: ok, hasIssue: unknown.length > 0 || missing.length > 0, text: lines.join('\n') };
+}
+
+/** 投稿キー単位で照合（投稿内の全ページを対象にOCR） */
+function reviewGroup(group) {
+  var truth = truthOfGroup(group);
+  var ocrCodes = Object.keys(ocrOfSlides(group.map(function (g) { return g.slide; })));
+  var label = '投稿まるごと: ' + (group[0].key || '?') + ' 【' + (group[0].title || '') + '】';
+  return buildResult(truth, ocrCodes, label);
+}
+
+/** 1ページだけ照合（正解はその投稿から引き、OCRはこのページの画像のみ） */
+function reviewSinglePage(item, group) {
+  var truth = truthOfGroup(group);   // 正解は投稿グループ全体から
+  var ocrCodes = Object.keys(ocrOfSlides([item.slide]));   // OCRはこのページだけ
+  var label = 'ページ p' + (item.index + 1) + ' / 投稿 ' + (item.key || '?') + ' 【' + (item.title || '') + '】';
+  return buildResult(truth, ocrCodes, label);
 }
 
 function writeFindings(slide, result) {
@@ -188,6 +215,79 @@ function activeSlideIndex() {
   if (page) for (var i = 0; i < slides.length; i++)
     if (slides[i].getObjectId() === page.getObjectId()) return i;
   return 0;
+}
+
+/** いま選択されているスライドの index 配列を返す（サムネイルで複数選択に対応） */
+function selectedSlideIndexes() {
+  var pres = SlidesApp.getActivePresentation();
+  var slides = pres.getSlides();
+  var idById = {};
+  slides.forEach(function (s, i) { idById[s.getObjectId()] = i; });
+
+  var sel = pres.getSelection();
+  var ids = [];
+  if (sel) {
+    var pr = sel.getPageRange();                 // サムネイルで選択中のページ群
+    if (pr) pr.getPages().forEach(function (p) { ids.push(p.getObjectId()); });
+    if (!ids.length && sel.getCurrentPage()) ids.push(sel.getCurrentPage().getObjectId());
+  }
+  var idxs = [];
+  ids.forEach(function (id) { if (idById[id] !== undefined) idxs.push(idById[id]); });
+  idxs.sort(function (a, b) { return a - b; });
+  return idxs;
+}
+
+/** index 配列のページをそれぞれピンポイント照合する共通処理 */
+function reviewIndexes(idxs) {
+  var ks = keyedSlides();
+  if (!idxs.length) { SlidesApp.getUi().alert('対象ページが選択されていません。'); return; }
+  var done = 0, issues = 0, skipped = 0, lastText = '';
+  idxs.forEach(function (i) {
+    var item = ks[i];
+    if (!item || !item.key) { skipped++; return; }        // 一覧/テンプレ/ID無しは対象外
+    var group = ks.filter(function (g) { return g.key === item.key; });
+    var result = reviewSinglePage(item, group);
+    writeFindings(item.slide, result);
+    done++; if (result.hasIssue) issues++; lastText = result.text;
+  });
+  var msg = '照合完了：' + done + 'ページ（要確認 ' + issues + '）';
+  if (skipped) msg += ' / 対象外 ' + skipped + 'ページ';
+  if (done === 1) msg += '\n\n' + lastText;
+  SlidesApp.getUi().alert(msg);
+}
+
+/** メニュー：サムネイルで選択したページを照合 */
+function reviewSelectedPages() {
+  reviewIndexes(selectedSlideIndexes());
+}
+
+/** メニュー：ページ番号を指定して照合（例: 7 / 5,7 / 9-11） */
+function reviewByNumbers() {
+  var ui = SlidesApp.getUi();
+  var res = ui.prompt('レビューするページ番号',
+    '例: 7 ／ 5,7 ／ 9-11（カンマと範囲を使えます）', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  var total = SlidesApp.getActivePresentation().getSlides().length;
+  var idxs = parsePageSpec(res.getResponseText(), total);
+  reviewIndexes(idxs);
+}
+
+/** "5,7,9-11" のような指定を 0始まり index 配列に変換 */
+function parsePageSpec(spec, total) {
+  var set = {}, out = [];
+  norm(spec).split(',').forEach(function (part) {
+    part = part.trim(); if (!part) return;
+    var m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      var a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+      for (var n = Math.min(a, b); n <= Math.max(a, b); n++) addPage(n);
+    } else if (/^\d+$/.test(part)) {
+      addPage(parseInt(part, 10));
+    }
+  });
+  function addPage(n) { var i = n - 1; if (i >= 0 && i < total && !set[i]) { set[i] = 1; out.push(i); } }
+  out.sort(function (a, b) { return a - b; });
+  return out;
 }
 
 function reviewActivePost() {
