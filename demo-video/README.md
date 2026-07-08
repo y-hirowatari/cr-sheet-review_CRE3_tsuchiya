@@ -17,11 +17,17 @@
 
 主要機能のみのダイジェスト(ホーム/チェックイン/タスク/ウォレット/ダッシュボード/モデレーション/トークン)。
 
+## ブランドロゴ
+
+タイトル・セクション・エンドカードには提供されたDAOXロゴ(「DAO」ワードマーク+4点スターのXマーク)を再現して使用。
+ワードマークは Poppins 400(npm `@fontsource/poppins` から取得し data URI で埋め込み)、Xマークは `record_cards.mjs` 内の SVG パスとして定義。
+
 ## 再生成方法
 
 ```sh
-node record60.mjs   # 52秒版のセグメント録画(要 playwright + chromium)
-node record.mjs     # 30秒版
+node record60.mjs      # 52秒版アプリ操作セグメントの録画(要 playwright + chromium)
+node record.mjs        # 30秒版アプリ操作セグメント
+node record_cards.mjs  # ロゴ入りタイトル/セクション/エンドカード
 # その後 ffmpeg で各セグメントを trim → concat → H.264 エンコード
 ```
 
