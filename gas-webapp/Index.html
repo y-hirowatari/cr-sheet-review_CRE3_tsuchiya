@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root{
+    --ink:#241c22; --ink2:#6c5c64; --line:#ecdde4; --bg:#fbf7f8; --card:#fff;
+    --rose:#c63d6e;
+    --good:#2e7d5b; --goodbg:#e5f1eb;
+    --warn:#8a5d10; --warnbg:#f6ecd6;
+    --crit:#b23a34; --critbg:#f7e0dd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+    color:var(--ink);background:var(--bg);font-size:14px;line-height:1.7}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 18px 60px}
+  h1{font-size:19px;margin:0 0 2px;font-weight:800;letter-spacing:.01em}
+  .sub{font-size:12px;color:var(--ink2);margin:0 0 20px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  label{font-size:12px;font-weight:700;color:var(--ink2);display:block;margin-bottom:6px}
+  select,input,button{font-family:inherit;font-size:13.5px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 11px}
+  input,select{width:100%}
+  select{font-weight:700;cursor:pointer}
+  .rowflex{display:flex;gap:8px}
+  .rowflex input{flex:1}
+  .rowflex button{flex:none}
+  button.go{font-weight:800;background:var(--rose);border-color:var(--rose);color:#fff;cursor:pointer}
+  button.go:hover{filter:brightness(1.06)}
+  button.go:disabled{opacity:.55;cursor:default}
+  button.ghost{background:#fff;color:var(--ink);cursor:pointer;font-weight:700}
+  button.ghost:hover{border-color:var(--rose);color:var(--rose)}
+  .field{margin-bottom:12px}
+  .field:last-child{margin-bottom:0}
+  .meta{font-size:12px;color:var(--ink2);margin:2px 0 14px}
+  .meta b{color:var(--ink)}
+  .status{font-size:12.5px;color:var(--ink2);margin:6px 0 12px;min-height:18px}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--rose);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .hide{display:none}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:13px 15px;margin-bottom:10px}
+  .chead{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .badge{font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;flex:none}
+  .badge.ng{background:var(--critbg);color:var(--crit)}
+  .badge.ok{background:var(--goodbg);color:var(--good)}
+  .badge.info{background:#eee;color:#555}
+  .ctitle{font-size:13px;font-weight:700;min-width:0;word-break:break-word}
+  .ctitle small{display:block;font-weight:400;color:var(--ink2);font-size:11px}
+  .count{font-size:12px;color:var(--ink2);margin:2px 0 9px}
+  .grp{margin-top:8px}
+  .glabel{font-size:12px;font-weight:700;margin-bottom:5px}
+  .glabel.crit{color:var(--crit)} .glabel.warn{color:var(--warn)} .glabel.good{color:var(--good)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-family:"DejaVu Sans Mono",monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:#faf6f8}
+  .chip.crit{background:var(--critbg);color:var(--crit);border-color:transparent}
+  .chip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
+  .chip.good{background:var(--goodbg);color:var(--good);border-color:transparent}
+  .note{font-size:12px;color:var(--warn);background:var(--warnbg);border-radius:8px;padding:7px 10px;margin-top:7px}
+  .empty{font-size:13px;color:var(--ink2);text-align:center;padding:20px 8px}
+  .legend{font-size:11.5px;color:var(--ink2);margin-top:14px;line-height:1.8}
+  .legend b.c{color:var(--crit)} .legend b.w{color:var(--warn)} .legend b.g{color:var(--good)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CRシート AIレビュー</h1>
+  <p class="sub">指示テキスト（正解）と貼り付け画像（OCR）の色番号を照合します。シートには書き込みません（読み取り専用）。</p>
+
+  <!-- STEP 1: シートを読み込む -->
+  <div class="panel">
+    <label>CRシート（Googleスライド）のURL</label>
+    <div class="rowflex">
+      <input id="url" type="text" placeholder="https://docs.google.com/presentation/d/........./edit" />
+      <button class="ghost" id="load" onclick="load()">読み込み</button>
+    </div>
+  </div>
+
+  <!-- STEP 2: 対象を選んで照合 -->
+  <div class="panel hide" id="step2">
+    <div class="meta" id="sheetMeta"></div>
+    <div class="field">
+      <label>照合する対象</label>
+      <select id="scope" onchange="onScope()">
+        <option value="post">投稿を選ぶ</option>
+        <option value="numbers">ページ番号を指定</option>
+        <option value="all">全投稿（時間がかかる）</option>
+      </select>
+    </div>
+    <div class="field" id="postField">
+      <label>投稿</label>
+      <select id="post"></select>
+    </div>
+    <div class="field hide" id="numField">
+      <label>ページ番号（例: 7 / 5,7 / 9-11）</label>
+      <input id="spec" type="text" placeholder="例: 5,7 / 9-11" />
+    </div>
+    <button class="go" id="go" onclick="go()">▶ 照合する</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+
+  <div class="legend hide" id="legend">
+    <b class="c">❌ 取り違え疑い</b>：提出物にあるが正解に無い色番号<br>
+    <b class="w">⚠ 未検出</b>：正解にあるが提出物で読めず／未反映<br>
+    <b class="g">✅ 一致</b>：正解と提出物で一致
+  </div>
+</div>
+
+<script>
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function el(id){return document.getElementById(id);}
+  function busy(b,msg){el('go').disabled=b;el('load').disabled=b;
+    el('status').innerHTML=b?('<span class="spin"></span>'+esc(msg||'処理中…')):esc(msg||'');}
+  function url(){return el('url').value.trim();}
+
+  function load(){
+    if(!url()){busy(false,'URLを入力してください');return;}
+    el('results').innerHTML=''; busy(true,'CRシートを読み込み中…');
+    google.script.run.withSuccessHandler(onLoaded).withFailureHandler(fail).api_load(url());
+  }
+  function onLoaded(info){
+    busy(false,'');
+    el('step2').classList.remove('hide');
+    el('legend').classList.remove('hide');
+    el('sheetMeta').innerHTML='<b>'+esc(info.title)+'</b>（'+info.slideCount+'ページ / 投稿 '+info.posts.length+'件）';
+    var sel=el('post'); sel.innerHTML='';
+    info.posts.forEach(function(p){
+      var o=document.createElement('option'); o.value=p.key;
+      o.textContent=p.key+'  '+(p.title||'')+'（p'+p.pages[0]+'〜 / 画像'+p.images+'）';
+      sel.appendChild(o);
+    });
+    onScope();
+  }
+  function onScope(){
+    var s=el('scope').value;
+    el('postField').classList.toggle('hide', s!=='post');
+    el('numField').classList.toggle('hide', s!=='numbers');
+  }
+  function go(){
+    el('results').innerHTML=''; busy(true,'照合中…（OCRに数十秒〜かかることがあります）');
+    var s=el('scope').value;
+    var g=google.script.run.withSuccessHandler(render).withFailureHandler(fail);
+    if(s==='post')g.api_reviewPost(url(), el('post').value);
+    else if(s==='numbers')g.api_reviewPages(url(), el('spec').value||'');
+    else g.api_reviewAll(url());
+  }
+  function fail(e){busy(false,'');el('results').innerHTML='<div class="note">エラー: '+esc(e&&e.message||e)+'</div>';}
+
+  function chips(a,cls){if(!a||!a.length)return '';return '<div class="chips">'+a.map(function(c){return '<span class="chip '+cls+'">'+esc(c)+'</span>';}).join('')+'</div>';}
+  function card(r){
+    if(r.skipped)return '<div class="card"><div class="chead"><span class="badge info">対象外</span><div class="ctitle">'+(r.pageIndex?('ページ p'+r.pageIndex):esc(r.key||''))+'<small>一覧／テンプレ／IDなし</small></div></div></div>';
+    var badge=r.truthEmpty?'<span class="badge info">情報</span>':(r.hasIssue?'<span class="badge ng">要確認</span>':'<span class="badge ok">一致</span>');
+    var head=(r.scope==='page'?('ページ p'+r.pageIndex):'投稿 '+esc(r.key));
+    var h='<div class="card"><div class="chead">'+badge+'<div class="ctitle">'+esc(head)+'<small>'+esc(r.key)+(r.title?' 【'+esc(r.title)+'】':'')+'</small></div></div>';
+    h+='<div class="count">一致 '+r.matched.length+' / 正解 '+r.truth.length+'（OCR検出 '+r.ocr.length+'）</div>';
+    if(r.truthEmpty)h+='<div class="note">正解の色番号を取得できませんでした。指示テキストのある投稿か確認してください。</div>';
+    if(r.unknown.length)h+='<div class="grp"><div class="glabel crit">❌ 取り違え疑い</div>'+chips(r.unknown,'crit')+'</div>';
+    if(r.missing.length)h+='<div class="grp"><div class="glabel warn">⚠ 未検出</div>'+chips(r.missing,'warn')+'</div>';
+    if(r.matched.length)h+='<div class="grp"><div class="glabel good">✅ 一致</div>'+chips(r.matched,'good')+'</div>';
+    return h+'</div>';
+  }
+  function render(results){
+    busy(false,'完了：'+results.length+'件');
+    el('results').innerHTML=results.length?results.map(card).join(''):'<div class="empty">対象がありません。</div>';
+  }
+</script>
+</body>
+</html>
