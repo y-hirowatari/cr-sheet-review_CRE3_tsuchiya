@@ -2,7 +2,8 @@
   "timeZone": "Asia/Tokyo",
   "dependencies": {
     "enabledAdvancedServices": [
-      { "userSymbol": "Drive", "version": "v2", "serviceId": "drive" }
+      { "userSymbol": "Drive", "version": "v2", "serviceId": "drive" },
+      { "userSymbol": "Slides", "version": "v1", "serviceId": "slides" }
     ]
   },
   "webapp": {

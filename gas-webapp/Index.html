@@ -153,16 +153,30 @@
   ['dragleave','drop'].forEach(function(ev){el('drop').addEventListener(ev,function(e){e.preventDefault();el('drop').classList.remove('hl');});});
   el('drop').addEventListener('drop',function(e){pick(e.dataTransfer.files);});
 
+  var MAX_PX=1600, JPEG_Q=0.85;
+  function shrink(file,cb){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width, h=img.height, scale=Math.min(1, MAX_PX/Math.max(w,h));
+      var cw=Math.round(w*scale), ch=Math.round(h*scale);
+      var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+      cv.getContext('2d').drawImage(img,0,0,cw,ch);
+      var dataUrl=cv.toDataURL('image/jpeg',JPEG_Q);
+      cb({name:file.name.replace(/\.\w+$/,'.jpg'), mime:'image/jpeg', b64:dataUrl.split(',')[1]});
+    };
+    img.onerror=function(){cb(null);};
+    img.src=URL.createObjectURL(file);
+  }
   function pick(fileList){
     var arr=Array.prototype.slice.call(fileList).filter(function(f){return /^image\//.test(f.type);});
     if(!arr.length)return;
     FILES=[]; var done=0;
-    el('files').innerHTML='読み込み中…';
+    el('files').innerHTML='画像を圧縮中…';
     arr.forEach(function(f){
-      var r=new FileReader();
-      r.onload=function(){FILES.push({name:f.name,mime:f.type||'image/png',b64:r.result.split(',')[1]}); if(++done===arr.length)filesReady();};
-      r.onerror=function(){if(++done===arr.length)filesReady();};
-      r.readAsDataURL(f);
+      shrink(f,function(result){
+        if(result)FILES.push(result);
+        if(++done===arr.length)filesReady();
+      });
     });
   }
   function filesReady(){
