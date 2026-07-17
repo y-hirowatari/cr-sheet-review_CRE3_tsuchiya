@@ -1,19 +1,21 @@
 /**
- * ネイルホリック CRシート AIレビュー — 社内Webアプリ版（スタンドアロンGAS / B案）
+ * CRシート AIレビュー — 社内Webアプリ版（スタンドアロンGAS）
  *
- * フロー（担当者決定）：
+ * フロー：
  *   1. アプリにCRシートのURLを入れて読み込む → 投稿一覧＋各投稿の「正解の色番号」を取得
  *   2. レビューしたい投稿を選ぶ（指示＝正解は常にCRシート内にある）
- *   3. 貼り付ける“前”の完成クリエイティブ画像をアプリにアップロード
+ *   3. 貼り付ける"前"の完成クリエイティブ画像をアプリにアップロード
  *   4. アップ画像をOCR → 正解と機械照合 → 結果を画面表示
  *
  * 方針：CRシートは【読み取り専用】（書き込まない・納品フローを変えない）。
  *       AIに正誤判断はさせない。OCRは「読む」だけ、一致判定は機械が文字単位で行う。
  *
- * デプロイ：デプロイ → 新しいデプロイ → 種類「ウェブアプリ」
- *   次のユーザーとして実行: 「ウェブアプリにアクセスしているユーザー」
- *   アクセスできるユーザー: 「(社内ドメイン) 内の全員」
- * セットアップ詳細は gas-webapp/README.md を参照（Drive 詳細サービスの有効化が必要）。
+ * セットアップ：
+ *   1. GASエディタ →「サービス」→「+」→「Google Slides API」を追加
+ *   2. GASエディタ →「サービス」→「+」→「Drive API」を追加（OCR用、既存）
+ *   3. デプロイ → 新しいデプロイ → 種類「ウェブアプリ」
+ *      次のユーザーとして実行: 「ウェブアプリにアクセスしているユーザー」
+ *      アクセスできるユーザー: 「(社内ドメイン) 内の全員」
  */
 
 var CONFIG = {
@@ -37,11 +39,6 @@ function idFromUrl(url) {
   throw new Error('スライドのURL/IDを認識できませんでした');
 }
 
-function openPres(url) {
-  try { return SlidesApp.openById(idFromUrl(url)); }
-  catch (e) { throw new Error('スライドを開けませんでした（URL誤り、またはアクセス権がありません）'); }
-}
-
 /* ---------- テキスト・色番号ユーティリティ ---------- */
 
 function norm(s) {
@@ -57,60 +54,75 @@ function extractCodes(text) {
   return out;
 }
 
-function slideText(slide) {
-  var parts = [];
-  slide.getShapes().forEach(function (sh) {
-    try { var t = sh.getText().asString(); if (t) parts.push(t); } catch (e) {}
-  });
-  slide.getTables().forEach(function (tbl) {
-    for (var r = 0; r < tbl.getNumRows(); r++)
-      for (var c = 0; c < tbl.getNumColumns(); c++)
-        try { parts.push(tbl.getCell(r, c).getText().asString()); } catch (e) {}
-  });
-  return parts.join('\n');
-}
+/* ---------- Slides API JSON からテキスト抽出 ---------- */
 
-function postIdsOf(slide) {
-  var text = norm(slideText(slide));
-  var re = /投稿no,\s*(\d+)_\s*(\d+)月\s*(\d+)日/g, m, ids = [], seen = {};
-  while ((m = re.exec(text)) !== null) {
-    var key = m[1] + '_' + m[2] + '/' + m[3];
-    if (!seen[key]) { seen[key] = 1; ids.push(key); }
-  }
-  var t = text.match(/【([^】]+)】/);
-  return { ids: ids, title: t ? t[1] : '' };
-}
-
-function classify(slide) {
-  var text = norm(slideText(slide));
-  if (/xxx|テンプレ/.test(text)) return { type: 'TEMPLATE' };
-  if (/投稿日一覧/.test(text)) return { type: 'LIST' };
-  if (/^(IG|X)$/.test(text)) return { type: 'LIST' };
-  var pid = postIdsOf(slide);
-  if (pid.ids.length >= 2) return { type: 'LIST' };
-  if (pid.ids.length === 1) return { type: 'CONTENT', key: pid.ids[0], title: pid.title };
-  return { type: 'CONT' };
-}
-
-function keyedSlides(pres) {
-  var slides = pres.getSlides();
-  var out = [], lastKey = null, lastTitle = '';
-  for (var i = 0; i < slides.length; i++) {
-    var cl = classify(slides[i]);
-    var key = null, title = '';
-    if (cl.type === 'CONTENT') { key = cl.key; title = cl.title; lastKey = key; lastTitle = title; }
-    else if (cl.type === 'CONT') { key = lastKey; title = lastTitle; }
-    out.push({ index: i, slide: slides[i], type: cl.type, key: key, title: title });
+/** textElements 配列からプレーンテキストを結合する */
+function textContent(textElements) {
+  if (!textElements) return '';
+  var out = '';
+  for (var i = 0; i < textElements.length; i++) {
+    if (textElements[i].textRun) out += textElements[i].textRun.content;
   }
   return out;
 }
 
-function truthOfGroup(group) {
-  var truth = [], seen = {};
-  group.forEach(function (g) {
-    extractCodes(slideText(g.slide)).forEach(function (c) { if (!seen[c]) { seen[c] = 1; truth.push(c); } });
-  });
-  return truth;
+/** JSON形式のスライドオブジェクトから全テキストを抽出する */
+function slideTextJson(slide) {
+  var parts = [];
+  var elems = slide.pageElements || [];
+  for (var i = 0; i < elems.length; i++) {
+    var el = elems[i];
+    // Shape（テキストボックス等）
+    if (el.shape && el.shape.text) {
+      parts.push(textContent(el.shape.text.textElements));
+    }
+    // Table
+    if (el.table && el.table.tableRows) {
+      var rows = el.table.tableRows;
+      for (var r = 0; r < rows.length; r++) {
+        var cells = rows[r].tableCells || [];
+        for (var c = 0; c < cells.length; c++) {
+          if (cells[c].text) {
+            parts.push(textContent(cells[c].text.textElements));
+          }
+        }
+      }
+    }
+    // Group（グループ化された要素を再帰的に処理）
+    if (el.elementGroup && el.elementGroup.children) {
+      var children = el.elementGroup.children;
+      for (var j = 0; j < children.length; j++) {
+        if (children[j].shape && children[j].shape.text) {
+          parts.push(textContent(children[j].shape.text.textElements));
+        }
+      }
+    }
+  }
+  return parts.join('\n');
+}
+
+/* ---------- スライド分類（テキストベース） ---------- */
+
+function postIdsOfText(text) {
+  var n = norm(text);
+  var re = /投稿no,\s*(\d+)_\s*(\d+)月\s*(\d+)日/g, m, ids = [], seen = {};
+  while ((m = re.exec(n)) !== null) {
+    var key = m[1] + '_' + m[2] + '/' + m[3];
+    if (!seen[key]) { seen[key] = 1; ids.push(key); }
+  }
+  var t = n.match(/【([^】]+)】/);
+  return { ids: ids, title: t ? t[1] : '' };
+}
+
+function classifyText(text) {
+  var n = norm(text);
+  if (/xxx|テンプレ/.test(n)) return { type: 'TEMPLATE' };
+  if (/投稿日一覧/.test(n)) return { type: 'LIST' };
+  if (/^(IG|X)$/.test(n)) return { type: 'LIST' };
+  var pid = postIdsOfText(text);
+  if (pid.ids.length >= 2) return { type: 'LIST' };
+  if (pid.ids.length === 1) return { type: 'CONTENT', key: pid.ids[0], title: pid.title };
+  return { type: 'CONT' };
 }
 
 /* ---------- OCR（アップロード画像。Drive 詳細サービス使用） ---------- */
@@ -146,22 +158,51 @@ function buildResult(truth, ocrCodes, meta) {
 
 /* ---------- Webアプリ用API ---------- */
 
-/** STEP1：CRシートを読み込み、投稿一覧＋各投稿の正解色番号を返す（OCRしないので軽い） */
+/**
+ * STEP1：CRシートを読み込み、投稿一覧＋各投稿の正解色番号を返す。
+ * Slides Advanced Service (Slides.Presentations.get) で全スライドのデータを
+ * 1回のAPI呼び出しで一括取得し、ローカルでJSON解析する。
+ * 旧方式（SlidesApp）では72ページで6分超→タイムアウトしていたが、
+ * この方式では数秒で完了する。
+ */
 function api_load(url) {
-  var pres = openPres(url);
-  var ks = keyedSlides(pres);
+  var id = idFromUrl(url);
+  var pres;
+  try { pres = Slides.Presentations.get(id); }
+  catch (e) { throw new Error('スライドを開けませんでした（URL誤り、またはアクセス権がありません）'); }
+  var slides = pres.slides || [];
+
+  // 全スライドのテキストをローカルで一括抽出（API呼び出しなし）
+  var slideTexts = [];
+  for (var i = 0; i < slides.length; i++) {
+    slideTexts.push(slideTextJson(slides[i]));
+  }
+
+  // スライドを分類してキー付け
+  var lastKey = null, lastTitle = '';
   var groups = {}, order = [];
-  ks.forEach(function (g) {
-    if (!g.key) return;
-    if (!groups[g.key]) { groups[g.key] = { key: g.key, title: g.title, pages: [], slides: [] }; order.push(g.key); }
-    groups[g.key].pages.push(g.index + 1);
-    groups[g.key].slides.push(g);
-  });
+  for (var i = 0; i < slideTexts.length; i++) {
+    var cl = classifyText(slideTexts[i]);
+    var key = null, title = '';
+    if (cl.type === 'CONTENT') { key = cl.key; title = cl.title; lastKey = key; lastTitle = title; }
+    else if (cl.type === 'CONT') { key = lastKey; title = lastTitle; }
+    if (!key) continue;
+    if (!groups[key]) { groups[key] = { key: key, title: title, pages: [], texts: [] }; order.push(key); }
+    groups[key].pages.push(i + 1);
+    groups[key].texts.push(slideTexts[i]);
+  }
+
+  // 各投稿グループから正解の色番号を抽出
   var posts = order.map(function (k) {
     var grp = groups[k];
-    return { key: grp.key, title: grp.title, pages: grp.pages, truth: truthOfGroup(grp.slides) };
+    var truth = [], seen = {};
+    grp.texts.forEach(function (t) {
+      extractCodes(t).forEach(function (c) { if (!seen[c]) { seen[c] = 1; truth.push(c); } });
+    });
+    return { key: grp.key, title: grp.title, pages: grp.pages, truth: truth };
   });
-  return { title: pres.getName(), slideCount: ks.length, posts: posts };
+
+  return { title: pres.title, slideCount: slides.length, posts: posts };
 }
 
 /**
