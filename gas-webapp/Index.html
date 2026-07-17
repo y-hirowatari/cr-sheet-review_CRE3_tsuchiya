@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root{
+    --ink:#241c22; --ink2:#6c5c64; --line:#ecdde4; --bg:#fbf7f8; --card:#fff;
+    --rose:#c63d6e;
+    --good:#2e7d5b; --goodbg:#e5f1eb;
+    --warn:#8a5d10; --warnbg:#f6ecd6;
+    --crit:#b23a34; --critbg:#f7e0dd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",system-ui,sans-serif;
+    color:var(--ink);background:var(--bg);font-size:14px;line-height:1.7}
+  .wrap{max-width:720px;margin:0 auto;padding:24px 18px 60px}
+  h1{font-size:19px;margin:0 0 2px;font-weight:800}
+  .sub{font-size:12px;color:var(--ink2);margin:0 0 18px}
+  .step{font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--rose);margin:0 0 8px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+  label{font-size:12px;font-weight:700;color:var(--ink2);display:block;margin-bottom:6px}
+  select,input[type=text],button{font-family:inherit;font-size:13.5px;border-radius:9px;border:1px solid var(--line);background:#fff;color:var(--ink);padding:10px 11px}
+  input[type=text],select{width:100%}
+  select{font-weight:700;cursor:pointer}
+  .rowflex{display:flex;gap:8px}
+  .rowflex input{flex:1}
+  .rowflex button{flex:none}
+  button.go{font-weight:800;background:var(--rose);border-color:var(--rose);color:#fff;cursor:pointer;width:100%;padding:12px}
+  button.go:hover{filter:brightness(1.06)}
+  button.go:disabled{opacity:.55;cursor:default}
+  button.ghost{background:#fff;color:var(--ink);cursor:pointer;font-weight:700}
+  button.ghost:hover{border-color:var(--rose);color:var(--rose)}
+  .field{margin-bottom:13px}
+  .field:last-child{margin-bottom:0}
+  .meta{font-size:12px;color:var(--ink2);margin:0 0 12px}
+  .meta b{color:var(--ink)}
+  .truthbox{font-size:12px;color:var(--ink2);background:#faf6f8;border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-top:4px}
+  .drop{border:1.5px dashed var(--line);border-radius:11px;padding:18px;text-align:center;color:var(--ink2);font-size:12.5px;cursor:pointer;background:#fff}
+  .drop.hl{border-color:var(--rose);background:#fdf3f7}
+  .files{font-size:12px;color:var(--ink);margin-top:8px}
+  .files span{display:inline-block;background:#f2e8ee;border-radius:6px;padding:2px 8px;margin:3px 4px 0 0}
+  .status{font-size:12.5px;color:var(--ink2);margin:6px 0 12px;min-height:18px}
+  .spin{display:inline-block;width:12px;height:12px;border:2px solid var(--line);border-top-color:var(--rose);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .hide{display:none}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+  .chead{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+  .badge{font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;flex:none}
+  .badge.ng{background:var(--critbg);color:var(--crit)}
+  .badge.ok{background:var(--goodbg);color:var(--good)}
+  .badge.info{background:#eee;color:#555}
+  .ctitle{font-size:13px;font-weight:700;min-width:0;word-break:break-word}
+  .ctitle small{display:block;font-weight:400;color:var(--ink2);font-size:11px}
+  .count{font-size:12px;color:var(--ink2);margin:2px 0 9px}
+  .grp{margin-top:8px}
+  .glabel{font-size:12px;font-weight:700;margin-bottom:5px}
+  .glabel.crit{color:var(--crit)} .glabel.warn{color:var(--warn)} .glabel.good{color:var(--good)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-family:"DejaVu Sans Mono",monospace;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;border:1px solid var(--line);background:#faf6f8}
+  .chip.crit{background:var(--critbg);color:var(--crit);border-color:transparent}
+  .chip.warn{background:var(--warnbg);color:var(--warn);border-color:transparent}
+  .chip.good{background:var(--goodbg);color:var(--good);border-color:transparent}
+  .note{font-size:12px;color:var(--warn);background:var(--warnbg);border-radius:8px;padding:7px 10px;margin-top:7px}
+  .empty{font-size:13px;color:var(--ink2);text-align:center;padding:20px 8px}
+  .legend{font-size:11.5px;color:var(--ink2);margin-top:14px;line-height:1.8}
+  .legend b.c{color:var(--crit)} .legend b.w{color:var(--warn)} .legend b.g{color:var(--good)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CRシート AIレビュー</h1>
+  <p class="sub">指示（正解）はCRシートから読み込み、貼り付け前の完成画像をアップして色番号を照合します。シートには書き込みません。</p>
+
+  <!-- STEP 1 -->
+  <div class="panel">
+    <div class="step">STEP 1 ・ CRシートを読み込む</div>
+    <label>CRシート（Googleスライド）のURL</label>
+    <div class="rowflex">
+      <input id="url" type="text" placeholder="https://docs.google.com/presentation/d/........./edit" />
+      <button class="ghost" id="load" onclick="load()">読み込み</button>
+    </div>
+  </div>
+
+  <!-- STEP 2 + 3 -->
+  <div class="panel hide" id="step2">
+    <div class="step">STEP 2 ・ 投稿を選ぶ</div>
+    <div class="meta" id="sheetMeta"></div>
+    <div class="field">
+      <label>レビューする投稿</label>
+      <select id="post" onchange="onPost()"></select>
+      <div class="truthbox" id="truthbox"></div>
+    </div>
+
+    <div class="step" style="margin-top:16px">STEP 3 ・ 完成画像をアップして照合</div>
+    <div class="field">
+      <div class="drop" id="drop">クリックで画像を選択（複数可）／ここにドラッグ＆ドロップ<br><span style="font-size:11px">PNG / JPG。貼り付け“前”の完成クリエイティブ</span></div>
+      <input id="file" type="file" accept="image/*" multiple class="hide" />
+      <div class="files" id="files"></div>
+    </div>
+    <button class="go" id="go" onclick="go()" disabled>▶ 照合する</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div id="results"></div>
+
+  <div class="legend hide" id="legend">
+    <b class="c">❌ 取り違え疑い</b>：画像にあるが正解に無い色番号<br>
+    <b class="w">⚠ 未検出</b>：正解にあるが画像で読めず／載せ忘れ<br>
+    <b class="g">✅ 一致</b>：正解と画像で一致
+  </div>
+</div>
+
+<script>
+  var POSTS = [], FILES = [];
+  function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+  function el(id){return document.getElementById(id);}
+  function busy(b,msg){el('go').disabled=b||!FILES.length;el('load').disabled=b;
+    el('status').innerHTML=b?('<span class="spin"></span>'+esc(msg||'処理中…')):esc(msg||'');}
+  function url(){return el('url').value.trim();}
+
+  /* STEP1 */
+  function load(){
+    if(!url()){busy(false,'URLを入力してください');return;}
+    el('results').innerHTML=''; busy(true,'CRシートを読み込み中…');
+    google.script.run.withSuccessHandler(onLoaded).withFailureHandler(fail).api_load(url());
+  }
+  function onLoaded(info){
+    busy(false,'');
+    POSTS=info.posts||[];
+    el('step2').classList.remove('hide');
+    el('legend').classList.remove('hide');
+    el('sheetMeta').innerHTML='<b>'+esc(info.title)+'</b>（'+info.slideCount+'ページ / 投稿 '+POSTS.length+'件）';
+    var sel=el('post'); sel.innerHTML='';
+    POSTS.forEach(function(p,i){
+      var o=document.createElement('option'); o.value=i;
+      o.textContent=p.key+'  '+(p.title||'');
+      sel.appendChild(o);
+    });
+    onPost();
+  }
+  function onPost(){
+    var p=POSTS[el('post').value]; if(!p)return;
+    el('truthbox').innerHTML='この投稿の正解の色番号（'+p.truth.length+'）：'+
+      (p.truth.length?p.truth.map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join(' '):'（テキストから取得できず）');
+  }
+
+  /* STEP3: ファイル選択 */
+  el('drop').onclick=function(){el('file').click();};
+  el('file').onchange=function(){pick(this.files);};
+  ['dragenter','dragover'].forEach(function(ev){el('drop').addEventListener(ev,function(e){e.preventDefault();el('drop').classList.add('hl');});});
+  ['dragleave','drop'].forEach(function(ev){el('drop').addEventListener(ev,function(e){e.preventDefault();el('drop').classList.remove('hl');});});
+  el('drop').addEventListener('drop',function(e){pick(e.dataTransfer.files);});
+
+  var MAX_PX=1600, JPEG_Q=0.85;
+  function shrink(file,cb){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width, h=img.height, scale=Math.min(1, MAX_PX/Math.max(w,h));
+      var cw=Math.round(w*scale), ch=Math.round(h*scale);
+      var cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+      cv.getContext('2d').drawImage(img,0,0,cw,ch);
+      var dataUrl=cv.toDataURL('image/jpeg',JPEG_Q);
+      cb({name:file.name.replace(/\.\w+$/,'.jpg'), mime:'image/jpeg', b64:dataUrl.split(',')[1]});
+    };
+    img.onerror=function(){cb(null);};
+    img.src=URL.createObjectURL(file);
+  }
+  function pick(fileList){
+    var arr=Array.prototype.slice.call(fileList).filter(function(f){return /^image\//.test(f.type);});
+    if(!arr.length)return;
+    FILES=[]; var done=0;
+    el('files').innerHTML='画像を圧縮中…';
+    arr.forEach(function(f){
+      shrink(f,function(result){
+        if(result)FILES.push(result);
+        if(++done===arr.length)filesReady();
+      });
+    });
+  }
+  function filesReady(){
+    el('files').innerHTML=FILES.map(function(f){return '<span>'+esc(f.name)+'</span>';}).join('');
+    el('go').disabled=false;
+  }
+
+  /* 照合 */
+  function go(){
+    if(!FILES.length){busy(false,'画像を選んでください');return;}
+    var p=POSTS[el('post').value];
+    el('results').innerHTML=''; busy(true,'照合中…（OCRに数十秒かかることがあります）');
+    google.script.run.withSuccessHandler(render).withFailureHandler(fail)
+      .api_reviewUpload({key:p.key,title:p.title,truth:p.truth,files:FILES});
+  }
+  function fail(e){busy(false,'');el('results').innerHTML='<div class="note">エラー: '+esc(e&&e.message||e)+'</div>';}
+
+  function chips(a,cls){if(!a||!a.length)return '';return '<div class="chips">'+a.map(function(c){return '<span class="chip '+cls+'">'+esc(c)+'</span>';}).join('')+'</div>';}
+  function card(r){
+    var badge=r.truthEmpty?'<span class="badge info">情報</span>':(r.hasIssue?'<span class="badge ng">要確認</span>':'<span class="badge ok">一致</span>');
+    var h='<div class="card"><div class="chead">'+badge+'<div class="ctitle">投稿 '+esc(r.key)+'<small>'+(r.title?'【'+esc(r.title)+'】 ':'')+'アップ画像 '+r.images+'枚</small></div></div>';
+    h+='<div class="count">一致 '+r.matched.length+' / 正解 '+r.truth.length+'（画像OCR検出 '+r.ocr.length+'）</div>';
+    if(r.truthEmpty)h+='<div class="note">正解の色番号を取得できませんでした。指示テキストのある投稿か確認してください。</div>';
+    if(r.unknown.length)h+='<div class="grp"><div class="glabel crit">❌ 取り違え疑い</div>'+chips(r.unknown,'crit')+'</div>';
+    if(r.missing.length)h+='<div class="grp"><div class="glabel warn">⚠ 未検出</div>'+chips(r.missing,'warn')+'</div>';
+    if(r.matched.length)h+='<div class="grp"><div class="glabel good">✅ 一致</div>'+chips(r.matched,'good')+'</div>';
+    return h+'</div>';
+  }
+  function render(r){busy(false,'完了');el('results').innerHTML=card(r);}
+</script>
+</body>
+</html>
